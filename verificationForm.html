@@ -1,1 +1,706 @@
-# Pietos-Solution-Private-Limited
+const SPREADSHEET_ID = '1aG3u2GVo5e8t8stgaWixn7P5QUmn4UMGRKBrS9l_BB4';
+const PARENT_FOLDER_ID = '1FqRfs9IX2NPaW1uH27F9Lk-OnwyBVLrJ';
+
+/**
+ * Serves the HTML file for the web app.
+ */
+function doGet(e) {
+  if (e && e.parameter && e.parameter.token) {
+    return handleVerificationToken(e.parameter.token);
+  }
+  
+  if (e && e.parameter && e.parameter.success) {
+    return HtmlService.createHtmlOutputFromFile('successPage')
+      .setTitle('Verification Complete')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  if (e && e.parameter && e.parameter.view === 'report') {
+    const referenceId = e.parameter.refId;
+    const record = getReportData(referenceId); // Get the record data
+    
+    if (!record) {
+      return HtmlService.createHtmlOutput("No record found for reference ID: " + referenceId);
+    }
+    
+    // Create template and pass the record
+    const template = HtmlService.createTemplateFromFile('viewReport');
+    template.record = record; // This is the critical line that passes the data
+    return template.evaluate()
+      .setTitle('Verification Report')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('Client Data Display')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * Generates a unique identifier.
+ */
+function generateUniqueToken() {
+  return Utilities.getUuid();
+}
+
+/**
+ * Helper function to find column index flexibly with exact matching
+ */
+function findColumnIndex(headers, searchTerms) {
+  if (!Array.isArray(searchTerms)) searchTerms = [searchTerms];
+  
+  const cleanHeaders = headers.map(h => h.toString().trim().toLowerCase());
+  
+  for (const term of searchTerms) {
+    const cleanTerm = term.toString().trim().toLowerCase();
+    const index = cleanHeaders.indexOf(cleanTerm);
+    if (index !== -1) return index;
+  }
+  
+  return -1;
+}
+
+/**
+ * Generates a report for a specific candidate
+ */
+function generateCandidateReport(referenceId) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    if (refIdIndex === -1) {
+      return {status: "error", message: "Reference ID column not found"};
+    }
+    
+    let record = null;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][refIdIndex] && data[i][refIdIndex].toString().trim() === referenceId.toString().trim()) {
+        record = {};
+        headers.forEach((header, index) => {
+          record[header] = data[i][index];
+        });
+        break;
+      }
+    }
+    
+    if (!record) {
+      return {status: "error", message: "Record not found for reference ID: " + referenceId};
+    }
+    
+    const appUrl = ScriptApp.getService().getUrl();
+    const reportUrl = `${appUrl}?view=report&refId=${referenceId}`;
+    
+    return {
+      status: "success",
+      redirectUrl: reportUrl,
+      message: "Report generated successfully"
+    };
+    
+  } catch (e) {
+    return {status: "error", message: "Error generating report: " + e.toString()};
+  }
+}
+
+/**
+ * Gets report data for display
+ */
+function getReportData(referenceId) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, ['reference id', 'referenceid']);
+    const nameIndex = findColumnIndex(headers, ['candidate name', 'name']);
+    const dobIndex = findColumnIndex(headers, ['date of birth', 'dob']);
+    const fatherIndex = findColumnIndex(headers, ['father\'s name', 'father name']);
+    const mobileIndex = findColumnIndex(headers, ['mobile number', 'mobile']);
+    const emailIndex = findColumnIndex(headers, ['email']);
+    const addressIndex = findColumnIndex(headers, ['address', 'original address']);
+    const verifiedAddressIndex = findColumnIndex(headers, ['verified address']);
+    const addressTypeIndex = findColumnIndex(headers, ['address type']);
+    const periodIndex = findColumnIndex(headers, ['period of stay']);
+    const commentsIndex = findColumnIndex(headers, ['comments']);
+    const gpsIndex = findColumnIndex(headers, ['gps location']);
+    const statusIndex = findColumnIndex(headers, ['verification status']);
+    const dateIndex = findColumnIndex(headers, ['verification date']);
+    const selfieIndex = findColumnIndex(headers, ['selfie link']);
+    const idCardIndex = findColumnIndex(headers, ['id card link']);
+    const homePic1Index = findColumnIndex(headers, ['home pic link 1', 'home picture link 1']);
+    const homePic2Index = findColumnIndex(headers, ['home pic link 2', 'home picture link 2']);
+    const homePic3Index = findColumnIndex(headers, ['home pic link 3', 'home picture link 3']);
+    const homePic4Index = findColumnIndex(headers, ['home pic link 4', 'home picture link 4']);
+    const homePic5Index = findColumnIndex(headers, ['home pic link 5', 'home picture link 5']);
+    const signatureIndex = findColumnIndex(headers, ['signature link']);
+    
+    if (refIdIndex === -1) {
+      return null;
+    }
+    
+    // For each file link column, convert to direct preview URL
+    const convertToPreviewUrl = (fileId) => {
+      if (!fileId) return '';
+      try {
+        const file = DriveApp.getFileById(fileId);
+        return `https://drive.google.com/file/d/${fileId}/preview`;
+      } catch (e) {
+        return '';
+      }
+    };
+
+    let record = null;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][refIdIndex] && data[i][refIdIndex].toString().trim() === referenceId.toString().trim()) {
+        record = {
+          'Reference ID': data[i][refIdIndex] || 'N/A',
+          'Candidate Name': nameIndex !== -1 ? data[i][nameIndex] : 'N/A',
+          'Date of Birth': dobIndex !== -1 ? data[i][dobIndex] : 'N/A',
+          'Father\'s Name': fatherIndex !== -1 ? data[i][fatherIndex] : 'N/A',
+          'Mobile Number': mobileIndex !== -1 ? data[i][mobileIndex] : 'N/A',
+          'Email': emailIndex !== -1 ? data[i][emailIndex] : 'N/A',
+          'Address': addressIndex !== -1 ? data[i][addressIndex] : 'N/A',
+          'Verified Address': verifiedAddressIndex !== -1 ? data[i][verifiedAddressIndex] : 'N/A',
+          'Address Type': addressTypeIndex !== -1 ? data[i][addressTypeIndex] : 'N/A',
+          'Period of Stay': periodIndex !== -1 ? data[i][periodIndex] : 'N/A',
+          'Comments': commentsIndex !== -1 ? data[i][commentsIndex] : 'N/A',
+          'GPS Location': gpsIndex !== -1 ? data[i][gpsIndex] : 'N/A',
+          'Verification Status': statusIndex !== -1 ? data[i][statusIndex] : 'N/A',
+          'Verification Date': dateIndex !== -1 ? data[i][dateIndex] : 'N/A',
+          'Selfie Link': selfieIndex !== -1 ? convertToPreviewUrl(extractFileId(data[i][selfieIndex])) : '',
+          'ID Card Link': idCardIndex !== -1 ? convertToPreviewUrl(extractFileId(data[i][idCardIndex])) : '',
+          'Home Pic Link 1': homePic1Index !== -1 ? convertToPreviewUrl(extractFileId(data[i][homePic1Index])) : '',
+          'Home Pic Link 2': homePic2Index !== -1 ? convertToPreviewUrl(extractFileId(data[i][homePic2Index])) : '',
+          'Home Pic Link 3': homePic3Index !== -1 ? convertToPreviewUrl(extractFileId(data[i][homePic3Index])) : '',
+          'Home Pic Link 4': homePic4Index !== -1 ? convertToPreviewUrl(extractFileId(data[i][homePic4Index])) : '',
+          'Home Pic Link 5': homePic5Index !== -1 ? convertToPreviewUrl(extractFileId(data[i][homePic5Index])) : '',
+          'Signature Link': signatureIndex !== -1 ? convertToPreviewUrl(extractFileId(data[i][signatureIndex])) : ''
+        };
+        break;
+      }
+    }
+    
+    return record;
+  } catch (e) {
+    console.error("Error getting report data:", e);
+    return null;
+  }
+}
+
+// Helper function to extract file ID from URL
+function extractFileId(url) {
+  if (!url) return '';
+  const match = url.match(/[-\w]{25,}/);
+  return match ? match[0] : '';
+}
+
+/**
+ * Stores a verification token for a candidate in the spreadsheet.
+ */
+function storeTokenForCandidate(referenceId, token) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    let data = sheet.getDataRange().getDisplayValues();
+    let headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    if (refIdIndex === -1) {
+      return {status: "error", message: "Error: 'Reference ID' column not found in the sheet."};
+    }
+    
+    let tokenIndex = findColumnIndex(headers, 'verification token');
+    if (tokenIndex === -1) {
+      tokenIndex = headers.length;
+      sheet.getRange(1, tokenIndex + 1).setValue("Verification Token");
+      data = sheet.getDataRange().getDisplayValues(); 
+      headers = data[0].map(h => h.toString().trim());
+    }
+    
+    let rowToUpdate = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      return {status: "error", message: "Record with Reference ID " + referenceId + " not found."};
+    }
+    
+    sheet.getRange(rowToUpdate, tokenIndex + 1).setValue(token);
+    return {status: "success", message: "Token stored successfully."};
+  } catch (e) {
+    return {status: "error", message: "Error storing token: " + e.toString()};
+  }
+}
+
+/**
+ * Handles the verification token when the user clicks the link.
+ */
+function handleVerificationToken(token) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const columnMap = {
+      token: findColumnIndex(headers, 'Verification Token'),
+      refId: findColumnIndex(headers, 'Reference ID'),
+      name: findColumnIndex(headers, 'Candidate Name'),
+      mobile: findColumnIndex(headers, 'Mobile Number'),
+      email: findColumnIndex(headers, 'Email'),
+      address: findColumnIndex(headers, 'Address')
+    };
+    
+    let record = null;
+    for (let i = 1; i < data.length; i++) {
+      const rowToken = data[i][columnMap.token];
+      if (rowToken && rowToken.toString().trim() === token.toString().trim()) {
+        record = {
+          'Reference ID': data[i][columnMap.refId] ? data[i][columnMap.refId].toString().trim() : 'N/A',
+          'Candidate Name': data[i][columnMap.name] ? data[i][columnMap.name].toString().trim() : 'N/A',
+          'Mobile Number': data[i][columnMap.mobile] ? data[i][columnMap.mobile].toString().trim() : 'N/A',
+          'Email': data[i][columnMap.email] ? data[i][columnMap.email].toString().trim() : 'N/A',
+          'Address': data[i][columnMap.address] ? data[i][columnMap.address].toString().trim() : 'N/A'
+        };
+        break;
+      }
+    }
+    
+    if (!record) {
+      return HtmlService.createHtmlOutput("Invalid or expired verification link.");
+    }
+    
+    const htmlOutput = HtmlService.createTemplateFromFile('verificationForm');
+    htmlOutput.record = record;
+    return htmlOutput.evaluate()
+      .setTitle('Address Verification')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      
+  } catch (e) {
+    return HtmlService.createHtmlOutput("Error processing verification.");
+  }
+}
+
+/**
+ * Handles the final submission of verification data from the form.
+ */
+function submitVerificationForm(clientRecord, submittedData) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    let headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+    
+    const referenceId = clientRecord['Reference ID'];
+    if (!referenceId) {
+        return { status: 'error', message: 'Critical Error: Reference ID was not found in the submitted record.' };
+    }
+
+    const verificationColumns = [
+      'Timestamp', 'Verified Address', 'Address Type', 'Period of Stay', 'Date of Birth', 
+      'Father\'s Name', 'Comments', 'GPS Location', 'Selfie Link', 'ID Card Link', 
+      'Home Pic Link 1', 'Home Pic Link 2', 'Home Pic Link 3', 'Home Pic Link 4', 'Home Pic Link 5',
+      'Signature Link', 'Verification Status', 'Verification Date'
+    ];
+
+    let newColumnsAdded = false;
+    verificationColumns.forEach(colName => {
+      if (!headers.some(h => h.toLowerCase() === colName.toLowerCase())) {
+        sheet.getRange(1, headers.length + 1).setValue(colName);
+        headers.push(colName);
+        newColumnsAdded = true;
+      }
+    });
+
+    if (newColumnsAdded) {
+       headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    
+    if (refIdIndex === -1) {
+        return { status: "error", message: "'Reference ID' column not found. Cannot save data." };
+    }
+
+    let rowToUpdate = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+
+    if (rowToUpdate === -1) {
+      return { status: "error", message: "Record with Reference ID " + referenceId + " not found." };
+    }
+    
+    const dataToUpdate = {
+      'timestamp': new Date(),
+      'verified address': submittedData.form?.address || '',
+      'address type': submittedData.form?.addressType || '',
+      'period of stay': submittedData.form?.periodOfStay || '',
+      'date of birth': submittedData.form?.dateOfBirth || '',
+      'father\'s name': submittedData.form?.fatherName || '',
+      'comments': submittedData.form?.comments || '',
+      'gps location': submittedData.gps || '',
+      'selfie link': submittedData.selfieLink || '', 
+      'id card link': submittedData.idCardLink || '', 
+      'home pic link 1': submittedData.homePicLinks?.[0] || '', 
+      'home pic link 2': submittedData.homePicLinks?.[1] || '', 
+      'home pic link 3': submittedData.homePicLinks?.[2] || '', 
+      'home pic link 4': submittedData.homePicLinks?.[3] || '', 
+      'home pic link 5': submittedData.homePicLinks?.[4] || '', 
+      'signature link': submittedData.signatureLink || '', 
+      'verification status': 'Verified',
+      'verification date': new Date().toISOString()
+    };
+
+    headers.forEach((header, index) => {
+        const lowerHeader = header.toLowerCase();
+        if (dataToUpdate.hasOwnProperty(lowerHeader)) {
+            sheet.getRange(rowToUpdate, index + 1).setValue(dataToUpdate[lowerHeader]);
+        }
+    });
+
+    return { status: 'success', message: 'Data saved successfully!' };
+
+  } catch (e) {
+    return { status: 'error', message: 'Failed to save data: ' + e.message };
+  }
+}
+
+/**
+ * Handles real-time file uploads.
+ */
+function uploadFile(base64Data, fileName, mimeType, referenceId) {
+  try {
+    const folder = getOrCreateFolder(referenceId);
+    const decodedData = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decodedData, mimeType, fileName);
+    const file = folder.createFile(blob);
+    
+    if (file) {
+      return { status: 'success', fileUrl: file.getUrl(), message: 'File uploaded successfully!' };
+    } else {
+      return { status: 'error', message: 'Failed to upload file to Drive.' };
+    }
+  } catch (e) {
+    return { status: 'error', message: 'Error uploading file: ' + e.message };
+  }
+}
+
+/**
+ * Gets or creates a subfolder for the reference ID.
+ */
+function getOrCreateFolder(referenceId) {
+  try {
+    const parentFolder = DriveApp.getFolderById(PARENT_FOLDER_ID);
+    const existingFolders = parentFolder.getFoldersByName(referenceId);
+    
+    if (existingFolders.hasNext()) {
+      return existingFolders.next();
+    }
+    
+    const newFolder = parentFolder.createFolder(referenceId);
+    newFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    return newFolder;
+  } catch (e) {
+    throw new Error("Failed to create or access folder for reference ID: " + referenceId);
+  }
+}
+
+/**
+ * Sends a verification email to the candidate.
+ */
+function sendVerificationEmail(referenceId) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    const emailIndex = findColumnIndex(headers, 'email');
+    const candidateNameIndex = findColumnIndex(headers, 'candidate name');
+    
+    if (refIdIndex === -1 || emailIndex === -1 || candidateNameIndex === -1) {
+      return {status: "error", message: "Required columns (Reference ID, Email, Candidate Name) not found."};
+    }
+    
+    let recordRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        recordRow = i;
+        break;
+      }
+    }
+
+    if (recordRow === -1) {
+      return {status: "error", message: "Record not found for Reference ID: " + referenceId};
+    }
+    
+    const record = {
+      email: data[recordRow][emailIndex],
+      candidateName: data[recordRow][candidateNameIndex],
+    };
+
+    const tokenIndex = findColumnIndex(headers, 'verification token');
+    let token = tokenIndex !== -1 ? data[recordRow][tokenIndex] : null;
+    
+    if (!token) {
+      token = generateUniqueToken();
+      const storeResult = storeTokenForCandidate(referenceId, token);
+      if (storeResult.status === "error") {
+        return storeResult;
+      }
+    }
+    
+    const appUrl = ScriptApp.getService().getUrl();
+    const verificationUrl = `${appUrl}?token=${token}`;
+    const subject = "Address Verification Request";
+    const body = `Dear ${record.candidateName},\n\nPlease verify your address by clicking on the following link:\n${verificationUrl}\n\nThis link is valid for 7 days.\n\nBest regards,\nPietos Team`;
+    
+    GmailApp.sendEmail(record.email, subject, body);
+    return {status: "success", message: "Verification email sent successfully."};
+  } catch (e) {
+    return {status: "error", message: "Error sending email: " + e.toString()};
+  }
+}
+
+/**
+ * Generates a WhatsApp message link for verification.
+ */
+function generateWhatsAppMessage(referenceId) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    const headers = data[0].map(h => h.toString().trim());
+
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    const mobileNumberIndex = findColumnIndex(headers, 'mobile number');
+    const candidateNameIndex = findColumnIndex(headers, 'candidate name');
+
+    if (refIdIndex === -1 || mobileNumberIndex === -1 || candidateNameIndex === -1) {
+      return {status: "error", message: "Required columns (Reference ID, Mobile Number, Candidate Name) not found."};
+    }
+
+    let recordRow = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        recordRow = i;
+        break;
+      }
+    }
+    
+    if (recordRow === -1) {
+      return {status: "error", message: "Record not found for Reference ID: " + referenceId};
+    }
+
+    const record = {
+      mobileNumber: data[recordRow][mobileNumberIndex],
+      candidateName: data[recordRow][candidateNameIndex],
+    };
+    
+    const tokenIndex = findColumnIndex(headers, 'verification token');
+    let token = tokenIndex !== -1 ? data[recordRow][tokenIndex] : null;
+
+    if (!token) {
+      token = generateUniqueToken();
+      const storeResult = storeTokenForCandidate(referenceId, token);
+      if (storeResult.status === "error") return storeResult;
+    }
+    
+    const appUrl = ScriptApp.getService().getUrl();
+    const verificationUrl = `${appUrl}?token=${token}`;
+    const whatsappMessage = `Dear ${record.candidateName},\n\nPlease verify your address by clicking on the following link:\n${verificationUrl}\n\nThis link is valid for 7 days.\n\nBest regards,\nPietos Team`;
+    const whatsappUrl = `https://wa.me/${record.mobileNumber}?text=${encodeURIComponent(whatsappMessage)}`;
+    
+    return { status: "success", message: "WhatsApp URL generated successfully.", whatsappUrl: whatsappUrl };
+  } catch (e) {
+    return {status: "error", message: "Error generating WhatsApp message: " + e.toString()};
+  }
+}
+
+/**
+ * Retrieves data from the active spreadsheet for the admin panel.
+ */
+function getSheetData() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    
+    if (data.length < 1) { 
+      return {status: "error", message: "Sheet is empty."};
+    }
+    
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const requiredHeaders = ['client name', 'reference id', 'candidate name'];
+    const missingHeaders = requiredHeaders.filter(reqHeader => 
+      !headers.some(h => h.toLowerCase() === reqHeader.toLowerCase())
+    );
+    
+    if (missingHeaders.length > 0) {
+      return { status: "error", message: "Missing columns in sheet: " + missingHeaders.join(", ") };
+    }
+    
+    const result = data.slice(1).map(row => {
+      const obj = {};
+      headers.forEach((header, index) => {
+        obj[header] = row[index] || '';
+      });
+      return obj;
+    });
+    
+    return { status: "success", data: result, headers: headers };
+    
+  } catch (e) {
+    return {status: "error", message: "Error getting sheet data: " + e.toString()};
+  }
+}
+
+/**
+ * Updates a row in the spreadsheet based on reference ID.
+ */
+function updateRowData(referenceId, updatedData) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    if (refIdIndex === -1) {
+      return {status: "error", message: "'Reference ID' column not found."};
+    }
+    
+    let rowToUpdate = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        rowToUpdate = i + 1;
+        break;
+      }
+    }
+    
+    if (rowToUpdate === -1) {
+      return {status: "error", message: "Record with Reference ID " + referenceId + " not found."};
+    }
+    
+    const updateValues = headers.map((header, index) => {
+      const lowerHeader = header.toLowerCase();
+      if (updatedData.hasOwnProperty(lowerHeader)) {
+        return updatedData[lowerHeader];
+      }
+      return data[rowToUpdate - 1][index];
+    });
+    
+    sheet.getRange(rowToUpdate, 1, 1, headers.length).setValues([updateValues]);
+    return {status: "success", message: "Record updated successfully."};
+  } catch (e) {
+    return {status: "error", message: "Error updating record: " + e.toString()};
+  }
+}
+
+/**
+ * Deletes a row from the spreadsheet based on reference ID.
+ */
+function deleteRow(referenceId) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    if (refIdIndex === -1) {
+      return {status: "error", message: "'Reference ID' column not found."};
+    }
+    
+    let rowToDelete = -1;
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === referenceId.toString().trim()) {
+        rowToDelete = i + 1;
+        break;
+      }
+    }
+    
+    if (rowToDelete === -1) {
+      return {status: "error", message: "Record with Reference ID " + referenceId + " not found."};
+    }
+    
+    sheet.deleteRow(rowToDelete);
+    return {status: "success", message: "Record deleted successfully."};
+  } catch (e) {
+    return {status: "error", message: "Error deleting record: " + e.toString()};
+  }
+}
+
+/**
+ * Creates a new case (row) in the spreadsheet.
+ */
+function createNewCase(caseData) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = sheet.getDataRange().getDisplayValues();
+    const headers = data[0].map(h => h.toString().trim());
+    
+    const refIdIndex = findColumnIndex(headers, 'reference id');
+    if (refIdIndex === -1) {
+      return {status: "error", message: "'Reference ID' column not found."};
+    }
+    
+    for (let i = 1; i < data.length; i++) {
+      const cellValue = data[i][refIdIndex];
+      if (cellValue && cellValue.toString().trim() === caseData['reference id'].toString().trim()) {
+        return {status: "error", message: "A case with this Reference ID already exists."};
+      }
+    }
+    
+    const newRow = headers.map(header => {
+      const lowerHeader = header.toLowerCase();
+      return caseData[lowerHeader] || '';
+    });
+    
+    sheet.appendRow(newRow);
+    return {status: "success", message: "New case created successfully."};
+  } catch (e) {
+    return {status: "error", message: "Error creating new case: " + e.toString()};
+  }
+}
+
+/**
+ * Returns a predefined list of client names.
+ */
+function getClientList() {
+  const clients = [
+    "Aavas Financiers Ltd.", "Adroit Global Personnel Services Pvt Ltd", "Adtech Corp", "Aleph India Group", 
+    "Amity Software", "Assentcode Technologies", "Asteria Aerospace Limited", "AutoRABIT", "Aviorion Private Limited",
+    "BE ONSITE SOLAR ENERGY PRIVATE LIMITED", "Blue Square Tech Solutions Pvt Ltd", "Byteridge", "Carrier Wheels", 
+    "Cloud Fulcrum", "CREDENTIA TECHNOLOGIES PRIVATE LIMITED", "Dean Infotech", "Demo", "DIN Engineering Services",
+    "DJT Corporation", "Evia Information Systems Pvt. Ltd.", "Finwizard Technology Pvt Ltd", 
+    "FTC Solar India Private Limited", "Gemini Solutions_New", "Green Cell Surat Private Limited", 
+    "Greencell Express Private Limited", "Hansa City Bus Services Pvt Ltd", "Helios Advisory", 
+    "KANSOCLOUD INDIA PRIVATE LIMITED", "Khaitan India Limited", "Kinetoscope Media and Tech Solutions Private Limited",
+    "Maa Homes & Estates Private Limited", "MITA", "Movez EV Bus (One) Pvt. Ltd", "MSC AGENCY (INDIA) PRIVATE LIMITED",
+    "MSC Service Center India Pvt Ltd", "Net Business Solutions", "Newgen Software Technologies Limited", 
+    "NICDC Logistics Data Services Limited", "Nucleus Microsystems P. Ltd.", "People Centro LLC", "PKFO' Connor Davies",
+    "REAN Foundation", "RebootXP", "Relaxo Footwears Limited", "Sample", "Secure Meters (Australia) Pty Ltd",
+    "Secure Meters Limited", "SocialPilot Solutions LLP", "SoHoDragon", "Spectrum Talent Management Limited",
+    "Tikona Infinet Limited", "Utkarsh Small Finance Bank Limited"
+  ];
+  return clients;
+}
+
+/**
+ * Includes an HTML file into another (helper function for templating).
+ */
+function include(filename) {
+  return HtmlService.createTemplateFromFile(filename).evaluate().getContent();
+}
